@@ -21,6 +21,7 @@
             background-color: #90EE90;
         }
     </style>
+    <script src="https://unpkg.com/@uniswap/v3-sdk@latest/dist/index.umd.js"></script>
 </head>
 <body>
     <h1>Cryptocurrency Price Comparison Across DEXes</h1>
@@ -45,56 +46,48 @@
 
     <script>
         const API_BASE_URL = 'https://api.coingecko.com/api/v3';
-        const DEX_IDS = ['uniswap_v3', 'pancakeswap_v2', 'sushiswap', 'curve', 'balancer_v2'];
+        const DEX_IDS = ['pancakeswap_v2', 'sushiswap', 'curve', 'balancer_v2'];
 
         async function fetchTop20Cryptocurrencies() {
             const response = await fetch(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=false`);
             return await response.json();
         }
 
-async function fetchDEXPrices(coinId) {
-    const prices = {};
-    try {
-        const response = await fetch(`${API_BASE_URL}/coins/${coinId}/tickers?include_exchange_logo=false&order=volume_desc&depth=true`);
-        const data = await response.json();
-        
-        DEX_IDS.forEach(dexId => {
-            const dexData = data.tickers.find(ticker => 
-                ticker.market.identifier.toLowerCase().includes(dexId) && 
-                ticker.target === 'USD'
-            );
-            prices[dexId] = dexData ? `$${dexData.last.toFixed(4)}` : 'N/A';
-        });
-    } catch (error) {
-        console.error(`Error fetching DEX prices for ${coinId}:`, error);
-        DEX_IDS.forEach(dexId => {
-            prices[dexId] = 'Error';
-        });
-    }
-    return prices;
-}
+        async function fetchUniswapV3Price(tokenAddress) {
+            const { ChainId, Token, Fetcher } = window.UniswapV3SDK;
 
-        async function populateTable() {
-    const tableBody = document.getElementById('cryptoData');
-    tableBody.innerHTML = ''; // Clear existing data
-    const cryptocurrencies = await fetchTop20Cryptocurrencies();
+            const token = new Token(ChainId.MAINNET, tokenAddress, 18); // Adjust decimals as needed
+            try {
+                const pair = await Fetcher.fetchPairData(token, token); // Fetch pair data
+                const price = pair.price.toSignificant(6); // Get price with significant digits
+                return `$${price}`;
+            } catch (error) {
+                console.error(`Error fetching Uniswap V3 price for ${tokenAddress}:`, error);
+                return 'Error';
+            }
+        }
 
-    for (let i = 0; i < cryptocurrencies.length; i++) {
-        const crypto = cryptocurrencies[i];
-        const row = tableBody.insertRow();
-        row.insertCell(0).textContent = i + 1;
-        row.insertCell(1).textContent = crypto.name;
-        row.insertCell(2).textContent = crypto.symbol.toUpperCase();
-        row.insertCell(3).textContent = `$${crypto.current_price}`;
-
-        const dexPrices = await fetchDEXPrices(crypto.id);
-        DEX_IDS.forEach((dexId, index) => {
-            row.insertCell(4 + index).textContent = dexPrices[dexId];
-        });
-
-        highlightBestPrice(row);
-    }
-}
+        async function fetchDEXPrices(coinId) {
+            const prices = {};
+            try {
+                const response = await fetch(`${API_BASE_URL}/coins/${coinId}/tickers?include_exchange_logo=false&order=volume_desc&depth=true`);
+                const data = await response.json();
+                
+                DEX_IDS.forEach(dexId => {
+                    const dexData = data.tickers.find(ticker => 
+                        ticker.market.identifier.toLowerCase().includes(dexId) && 
+                        ticker.target === 'USD'
+                    );
+                    prices[dexId] = dexData ? `$${dexData.last.toFixed(4)}` : 'N/A';
+                });
+            } catch (error) {
+                console.error(`Error fetching DEX prices for ${coinId}:`, error);
+                DEX_IDS.forEach(dexId => {
+                    prices[dexId] = 'Error';
+                });
+            }
+            return prices;
+        }
 
         function highlightBestPrice(row) {
             let bestPrice = Infinity;
@@ -114,7 +107,31 @@ async function fetchDEXPrices(coinId) {
             }
         }
 
+        async function populateTable() {
+            const tableBody = document.getElementById('cryptoData');
+            tableBody.innerHTML = ''; // Clear existing data
+            const cryptocurrencies = await fetchTop20Cryptocurrencies();
 
+            for (let i = 0; i < cryptocurrencies.length; i++) {
+                const crypto = cryptocurrencies[i];
+                const row = tableBody.insertRow();
+                row.insertCell(0).textContent = i + 1;
+                row.insertCell(1).textContent = crypto.name;
+                row.insertCell(2).textContent = crypto.symbol.toUpperCase();
+                row.insertCell(3).textContent = `$${crypto.current_price}`;
+
+                // Fetch Uniswap V3 price
+                const uniswapPrice = await fetchUniswapV3Price(crypto.id); // Use the correct token address
+                row.insertCell(4).textContent = uniswapPrice;
+
+                const dexPrices = await fetchDEXPrices(crypto.id);
+                DEX_IDS.forEach((dexId, index) => {
+                    row.insertCell(5 + index).textContent = dexPrices[dexId];
+                });
+
+                highlightBestPrice(row);
+            }
+        }
 
         // Initialize the table
         populateTable();
