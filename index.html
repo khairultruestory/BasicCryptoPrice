@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cryptocurrency Price Comparison Across DEXes</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .best-price {
+            background-color: #90EE90;
+        }
+    </style>
+</head>
+<body>
+    <h1>Cryptocurrency Price Comparison Across DEXes</h1>
+    <table id="cryptoTable">
+        <thead>
+            <tr>
+                <th>Rank</th>
+                <th>Name</th>
+                <th>Symbol</th>
+                <th>CoinGecko Price</th>
+                <th>Uniswap V3</th>
+                <th>PancakeSwap V2</th>
+                <th>SushiSwap</th>
+                <th>Curve</th>
+                <th>Balancer V2</th>
+            </tr>
+        </thead>
+        <tbody id="cryptoData">
+            <!-- Data will be inserted here by JavaScript -->
+        </tbody>
+    </table>
+
+    <script>
+        const API_BASE_URL = 'https://api.coingecko.com/api/v3';
+        const DEX_IDS = ['uniswap_v3', 'pancakeswap_v2', 'sushiswap', 'curve', 'balancer_v2'];
+
+        async function fetchTop20Cryptocurrencies() {
+            const response = await fetch(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=false`);
+            return await response.json();
+        }
+
+        async function fetchDEXPrices(coinId) {
+            const prices = {};
+            for (const dexId of DEX_IDS) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/simple/token_price/${dexId}?contract_addresses=${coinId}&vs_currencies=usd`);
+                    const data = await response.json();
+                    prices[dexId] = data[coinId.toLowerCase()]?.usd || 'N/A';
+                } catch (error) {
+                    console.error(`Error fetching price for ${coinId} on ${dexId}:`, error);
+                    prices[dexId] = 'Error';
+                }
+            }
+            return prices;
+        }
+
+        function highlightBestPrice(row) {
+            let bestPrice = Infinity;
+            let bestPriceIndex = -1;
+
+            for (let i = 4; i < 9; i++) {
+                const priceText = row.cells[i].textContent;
+                const price = priceText === 'N/A' || priceText === 'Error' ? Infinity : parseFloat(priceText.replace('$', ''));
+                if (price < bestPrice) {
+                    bestPrice = price;
+                    bestPriceIndex = i;
+                }
+            }
+
+            if (bestPriceIndex !== -1) {
+                row.cells[bestPriceIndex].classList.add('best-price');
+            }
+        }
+
+        async function populateTable() {
+            const tableBody = document.getElementById('cryptoData');
+            const cryptocurrencies = await fetchTop20Cryptocurrencies();
+
+            for (let i = 0; i < cryptocurrencies.length; i++) {
+                const crypto = cryptocurrencies[i];
+                const row = tableBody.insertRow();
+                row.insertCell(0).textContent = i + 1;
+                row.insertCell(1).textContent = crypto.name;
+                row.insertCell(2).textContent = crypto.symbol.toUpperCase();
+                row.insertCell(3).textContent = `$${crypto.current_price}`;
+
+                const dexPrices = await fetchDEXPrices(crypto.id);
+                DEX_IDS.forEach((dexId, index) => {
+                    const price = dexPrices[dexId];
+                    row.insertCell(4 + index).textContent = price === 'N/A' || price === 'Error' ? price : `$${price}`;
+                });
+
+                highlightBestPrice(row);
+            }
+        }
+
+        // Initialize the table
+        populateTable();
+
+        // Periodically update prices (every 5 minutes to respect API rate limits)
+        setInterval(populateTable, 300000);
+    </script>
+</body>
+</html>
